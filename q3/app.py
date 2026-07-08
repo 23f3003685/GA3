@@ -41,31 +41,16 @@ def clean_amount(value):
 
 
 def extract_amount(text):
-    patterns = [
+    match = re.search(
+        r"Subtotal.*?(\d[\d,]*(?:\.\d+)?)",
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
 
-        # Subtotal: USD 1,600.00
-        r"(?im)^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-
-        # Subtotal Amount: 780
-        r"(?im)^Subtotal\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-
-        # Amount: 780
-        r"(?im)^Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-
-        # Net Amount: 780
-        r"(?im)^Net\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-
-        # Invoice Amount: 780
-        r"(?im)^Invoice\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1)
+    if match:
+        return match.group(1)
 
     return None
-
 
 def extract_tax(text):
     patterns = [
