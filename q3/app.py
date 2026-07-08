@@ -1,14 +1,13 @@
 import re
-from datetime import datetime
 from dateutil import parser
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+
 app = FastAPI()
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,14 +16,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class InvoiceInput(BaseModel):
     invoice_text: str
 
 
-def extract_field(pattern, text, flags=re.IGNORECASE):
-    m = re.search(pattern, text, flags)
-    if m:
-        return m.group(1).strip()
+def extract_field(pattern, text, flags=re.IGNORECASE | re.MULTILINE):
+    match = re.search(pattern, text, flags)
+    if match:
+        return match.group(1).strip()
     return None
 
 
@@ -33,7 +33,6 @@ def clean_amount(value):
         return None
 
     value = value.replace(",", "")
-    value = re.sub(r"[^\d.]", "", value)
 
     try:
         return float(value)
@@ -46,36 +45,25 @@ def extract(data: InvoiceInput):
 
     text = data.invoice_text
 
+
+    # Invoice number
     invoice_no = extract_field(
-    r"(?:Invoice\s*(?:No|Number|#)|Ref)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
-    text,
-)
-
-    vendor = extract_field(
-    r"(?:Vendor|Seller|Client|Supplier|From|Billed\s*By)[:\-]?\s*(.+)",
-    text,
-)
-
-    subtotal = extract_field(
-    r"(?im)^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?)?\s*([\d,]+\.\d+)",
-    text,
-)
-
-    tax = extract_field(
-        r"(?:GST|Tax).*?[:\-]?\s*(.+)",
-        text,
+        r"^(?:Invoice\s*(?:No|Number)|Invoice\s*#|Ref)\s*[:\-]?\s*(\S+)",
+        text
     )
 
-    currency = "INR"
 
-    if "USD" in text or "$" in text:
-        currency = "USD"
-    elif "EUR" in text or "€" in text:
-        currency = "EUR"
+    # Vendor / Seller / Client
+    vendor = extract_field(
+        r"^(?:Vendor|Seller|Client|Supplier|Billed\s*By|From)\s*[:\-]?\s*(.+)$",
+        text
+    )
 
+
+    # Date
     date_str = extract_field(
-        r"Date[:\-]?\s*(.+)",
-        text,
+        r"^(?:Date|Issued)\s*[:\-]?\s*(.+)$",
+        text
     )
 
     date = None
@@ -86,11 +74,43 @@ def extract(data: InvoiceInput):
         except:
             date = None
 
+
+    # Subtotal amount (before tax)
+    amount = extract_field(
+        r"^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+        text
+    )
+
+
+    # Tax amount
+    tax = extract_field(
+        r"^(?:VAT|GST|IGST|Tax).*?[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+        text
+    )
+
+
+    # Currency
+    currency = extract_field(
+        r"Currency\s*[:\-]?\s*([A-Z]{3})",
+        text
+    )
+
+    if not currency:
+        if "USD" in text or "$" in text:
+            currency = "USD"
+        elif "EUR" in text or "€" in text:
+            currency = "EUR"
+        elif "INR" in text or "Rs" in text:
+            currency = "INR"
+        else:
+            currency = None
+
+
     return {
         "invoice_no": invoice_no,
         "date": date,
         "vendor": vendor,
-        "amount": clean_amount(subtotal),
+        "amount": clean_amount(amount),
         "tax": clean_amount(tax),
         "currency": currency,
     }
