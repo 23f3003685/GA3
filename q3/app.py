@@ -47,9 +47,9 @@ def extract(data: InvoiceInput):
     text = data.invoice_text
 
     invoice_no = extract_field(
-        r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)",
-        text,
-    )
+    r"(?:Invoice\s*(?:No|Number|#)\.?\s*[:\-]?\s*)([A-Za-z0-9\-\/]+)",
+    text,
+)
 
     vendor = extract_field(
         r"Vendor[:\-]?\s*(.+)",
