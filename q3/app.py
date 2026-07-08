@@ -57,9 +57,9 @@ def extract(data: InvoiceInput):
 )
 
     subtotal = extract_field(
-        r"Subtotal[:\-]?\s*(.+)",
-        text,
-    )
+    r"(?im)^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?)?\s*([\d,]+\.\d+)",
+    text,
+)
 
     tax = extract_field(
         r"(?:GST|Tax).*?[:\-]?\s*(.+)",
