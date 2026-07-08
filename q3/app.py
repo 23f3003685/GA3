@@ -21,8 +21,8 @@ class InvoiceInput(BaseModel):
     invoice_text: str
 
 
-def extract_field(pattern, text, flags=re.IGNORECASE | re.MULTILINE):
-    match = re.search(pattern, text, flags)
+def extract_field(pattern, text):
+    match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
     if match:
         return match.group(1).strip()
     return None
@@ -40,6 +40,46 @@ def clean_amount(value):
         return None
 
 
+def extract_amount(text):
+    patterns = [
+
+        # Subtotal: USD 1,600.00
+        r"(?im)^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+
+        # Subtotal Amount: 780
+        r"(?im)^Subtotal\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+
+        # Amount: 780
+        r"(?im)^Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+
+        # Net Amount: 780
+        r"(?im)^Net\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+
+        # Invoice Amount: 780
+        r"(?im)^Invoice\s+Amount\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def extract_tax(text):
+    patterns = [
+        r"(?im)^(?:VAT|GST|IGST|Tax).*?[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)"
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+
+    return None
+
+
 @app.post("/extract")
 def extract(data: InvoiceInput):
 
@@ -48,21 +88,21 @@ def extract(data: InvoiceInput):
 
     # Invoice number
     invoice_no = extract_field(
-        r"^(?:Invoice\s*(?:No|Number)|Invoice\s*#|Ref)\s*[:\-]?\s*(\S+)",
+        r"(?im)^(?:Invoice\s*(?:No|Number)|Invoice\s*#|Ref)\s*[:\-]?\s*(\S+)",
         text
     )
 
 
-    # Vendor / Seller / Client
+    # Vendor
     vendor = extract_field(
-        r"^(?:Vendor|Seller|Client|Supplier|Billed\s*By|From)\s*[:\-]?\s*(.+)$",
+        r"(?im)^(?:Vendor|Seller|Client|Supplier|Billed\s*By|From)\s*[:\-]?\s*(.+)$",
         text
     )
 
 
     # Date
     date_str = extract_field(
-        r"^(?:Date|Issued)\s*[:\-]?\s*(.+)$",
+        r"(?im)^(?:Date|Issued)\s*[:\-]?\s*(.+)$",
         text
     )
 
@@ -75,38 +115,36 @@ def extract(data: InvoiceInput):
             date = None
 
 
-    # Subtotal amount (before tax)
-    amount = extract_field(
-        r"^Subtotal\s*[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-        text
-    )
+    # Amount
+    amount = extract_amount(text)
 
 
-    # Tax amount
-    tax = extract_field(
-        r"^(?:VAT|GST|IGST|Tax).*?[:\-]?\s*(?:USD|EUR|INR|Rs\.?|\$|€)?\s*([\d,]+(?:\.\d+)?)",
-        text
-    )
+    # Tax
+    tax = extract_tax(text)
 
 
     # Currency
     currency = extract_field(
-        r"Currency\s*[:\-]?\s*([A-Z]{3})",
+        r"(?im)^Currency\s*[:\-]?\s*([A-Z]{3})",
         text
     )
 
     if not currency:
+
         if "USD" in text or "$" in text:
             currency = "USD"
+
         elif "EUR" in text or "€" in text:
             currency = "EUR"
+
         elif "INR" in text or "Rs" in text:
             currency = "INR"
+
         else:
             currency = None
 
 
-    return {
+    result = {
         "invoice_no": invoice_no,
         "date": date,
         "vendor": vendor,
@@ -114,3 +152,7 @@ def extract(data: InvoiceInput):
         "tax": clean_amount(tax),
         "currency": currency,
     }
+
+    print(result)
+
+    return result
