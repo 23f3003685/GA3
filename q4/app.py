@@ -1,7 +1,10 @@
+import os
 import json
 import re
 import requests
+
 from datetime import datetime
+from dateutil import parser
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,12 +17,14 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
+AIPIPE_URL = "https://aipipe.org/openai/v1/chat/completions"
+AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")
 
 
 class ExtractRequest(BaseModel):
@@ -28,7 +33,87 @@ class ExtractRequest(BaseModel):
 
 
 
-def validate_type(value, dtype):
+def call_llm(text, schema):
+
+    prompt = f"""
+You are a data extraction engine.
+
+Extract information from the text.
+
+TEXT:
+{text}
+
+TARGET SCHEMA:
+{json.dumps(schema)}
+
+Rules:
+1. Return ONLY valid JSON.
+2. Return exactly the keys from the schema.
+3. Do not add extra keys.
+4. Missing values must be null.
+5. Dates must be YYYY-MM-DD.
+6. Integer fields must be JSON integers.
+7. Float fields must be JSON numbers.
+8. Arrays must be JSON arrays.
+"""
+
+    response = requests.post(
+        AIPIPE_URL,
+        headers={
+            "Authorization": f"Bearer {AIPIPE_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0
+        },
+        timeout=60
+    )
+
+
+    response.raise_for_status()
+
+    data = response.json()
+
+
+    content = data["choices"][0]["message"]["content"]
+
+
+    # Remove markdown JSON block if returned
+
+    content = re.sub(
+        r"```json|```",
+        "",
+        content
+    ).strip()
+
+
+    try:
+        return json.loads(content)
+
+    except:
+
+        match = re.search(
+            r"\{.*\}",
+            content,
+            re.S
+        )
+
+        if match:
+            return json.loads(match.group())
+
+
+    return {}
+
+
+
+def validate_value(value, dtype):
 
     if value is None:
         return None
@@ -39,6 +124,7 @@ def validate_type(value, dtype):
 
 
     if dtype == "integer":
+
         try:
             return int(value)
         except:
@@ -46,6 +132,7 @@ def validate_type(value, dtype):
 
 
     if dtype == "float":
+
         try:
             return float(value)
         except:
@@ -66,38 +153,41 @@ def validate_type(value, dtype):
         return None
 
 
+
     if dtype == "date":
 
         try:
-            return datetime.fromisoformat(
+            return parser.parse(
                 str(value)
             ).date().isoformat()
 
         except:
-
-            try:
-                from dateutil import parser
-                return parser.parse(
-                    str(value)
-                ).date().isoformat()
-
-            except:
-                return None
+            return None
 
 
-    if dtype.startswith("array[string]"):
+
+    if dtype == "array[string]":
 
         if isinstance(value, list):
-            return [str(x) for x in value]
+            return [
+                str(x)
+                for x in value
+            ]
 
         return None
 
 
-    if dtype.startswith("array[integer]"):
+
+    if dtype == "array[integer]":
 
         if isinstance(value, list):
+
             try:
-                return [int(x) for x in value]
+                return [
+                    int(x)
+                    for x in value
+                ]
+
             except:
                 return None
 
@@ -108,75 +198,24 @@ def validate_type(value, dtype):
 
 
 
-def llm_extract(text, schema):
-
-    prompt = f"""
-Extract data from the text.
-
-Text:
-{text}
-
-Return ONLY valid JSON.
-
-Required schema:
-{json.dumps(schema)}
-
-Rules:
-- Return exactly these keys.
-- Missing values must be null.
-- Dates must be YYYY-MM-DD.
-- Numbers must not be strings.
-"""
-
-
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": "llama3.2",
-            "messages":[
-                {
-                    "role":"user",
-                    "content":prompt
-                }
-            ],
-            "stream":False
-        }
-    )
-
-
-    content = response.json()["message"]["content"]
-
-
-    match = re.search(
-        r"\{.*\}",
-        content,
-        re.S
-    )
-
-
-    if match:
-        return json.loads(match.group())
-
-    return {}
-
-
-
 @app.post("/dynamic-extract")
-def dynamic_extract(req: ExtractRequest):
+def dynamic_extract(request: ExtractRequest):
 
-    raw = llm_extract(
-        req.text,
-        req.schema
+    extracted = call_llm(
+        request.text,
+        request.schema
     )
 
 
-    result={}
+    result = {}
 
 
-    for key, dtype in req.schema.items():
+    # return exactly requested schema keys
 
-        result[key] = validate_type(
-            raw.get(key),
+    for key, dtype in request.schema.items():
+
+        result[key] = validate_value(
+            extracted.get(key),
             dtype
         )
 
