@@ -52,9 +52,9 @@ def extract(data: InvoiceInput):
 )
 
     vendor = extract_field(
-        r"Vendor[:\-]?\s*(.+)",
-        text,
-    )
+    r"(?:Vendor|Seller|Client|Supplier|From|Billed\s*By)[:\-]?\s*(.+)",
+    text,
+)
 
     subtotal = extract_field(
         r"Subtotal[:\-]?\s*(.+)",
