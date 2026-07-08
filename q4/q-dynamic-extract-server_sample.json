@@ -1,0 +1,41 @@
+{
+  "description": "Sample (text, schema) pairs for local testing. The grader uses DIFFERENT hidden pairs.",
+  "supported_types": [
+    "string",
+    "integer",
+    "float",
+    "boolean",
+    "date",
+    "array[string]",
+    "array[integer]"
+  ],
+  "type_notes": {
+    "date": "Return as ISO format: YYYY-MM-DD",
+    "float": "Return as a JSON number (not a string)",
+    "integer": "Return as a JSON integer",
+    "boolean": "Return true or false",
+    "array[string]": "Return as a JSON array of strings"
+  },
+  "samples": [
+    {
+      "text": "Order #ORD-5521 placed on 3rd March 2026. Items: 2 USB hubs and 5 HDMI cables. Total: $89.50. Shipped to: Bangalore.",
+      "schema": {
+        "order_id": "string",
+        "order_date": "date",
+        "total_amount": "float",
+        "city": "string"
+      }
+    },
+    {
+      "text": "Rahul bought 3 notebooks for Rs. 240 on 12 June 2026 from Alpha Store.",
+      "schema": {
+        "customer_name": "string",
+        "item": "string",
+        "quantity": "integer",
+        "amount": "float",
+        "purchase_date": "date",
+        "store": "string"
+      }
+    }
+  ]
+}
